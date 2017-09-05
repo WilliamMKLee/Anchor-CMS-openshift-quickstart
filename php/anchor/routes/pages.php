@@ -1,226 +1,264 @@
 <?php
 
-Route::collection(array('before' => 'auth,csrf'), function() {
+Route::collection(array('before' => 'auth,csrf,install_exists'), function () {
 
-	/*
-		List Pages
-	*/
-	Route::get(array('admin/pages', 'admin/pages/(:num)'), function($page = 1) {
-		$perpage = Config::meta('posts_per_page');
-		$total = Page::count();
-		$pages = Page::sort('title')->take($perpage)->skip(($page - 1) * $perpage)->get();
-		$url = Uri::to('admin/pages');
+    /*
+        List Pages
+    */
+    Route::get(array('admin/pages', 'admin/pages/(:num)'), function ($page = 1) {
+        $perpage = Config::get('admin.posts_per_page');
+        $total = Page::where(Base::table('pages.parent'), '=', '0')->count();
+        $pages = Page::sort('title')->where(Base::table('pages.parent'), '=', '0')->take($perpage)->skip(($page - 1) * $perpage)->get();
+        $url = Uri::to('admin/pages');
 
-		$pagination = new Paginator($pages, $total, $page, $perpage, $url);
+        $pagination = new Paginator($pages, $total, $page, $perpage, $url);
 
-		$vars['messages'] = Notify::read();
-		$vars['pages'] = $pagination;
-		$vars['status'] = 'all';
 
-		return View::create('pages/index', $vars)
-			->partial('header', 'partials/header')
-			->partial('footer', 'partials/footer');
-	});
+        $vars['pages'] = $pagination;
+        $vars['status'] = 'all';
 
-	/*
-		List pages by status and paginate through them
-	*/
-	Route::get(array(
-		'admin/pages/status/(:any)',
-		'admin/pages/status/(:any)/(:num)'), function($status, $page = 1) {
+        return View::create('pages/index', $vars)
+            ->partial('header', 'partials/header')
+            ->partial('footer', 'partials/footer');
+    });
 
-		$query = Page::where('status', '=', $status);
+    /*
+        List pages by status and paginate through them
+    */
+    Route::get(array(
+        'admin/pages/status/(:any)',
+        'admin/pages/status/(:any)/(:num)'), function ($status, $page = 1) {
 
-		$perpage = Config::meta('posts_per_page');
-		$total = $query->count();
-		$pages = $query->sort('title')->take($perpage)->skip(($page - 1) * $perpage)->get();
-		$url = Uri::to('admin/pages/status');
+        $query = Page::where('status', '=', $status);
 
-		$pagination = new Paginator($pages, $total, $page, $perpage, $url);
+        $perpage = Config::get('admin.posts_per_page');
+        $total = $query->count();
+        $pages = $query->sort('title')->take($perpage)->skip(($page - 1) * $perpage)->get();
+        $url = Uri::to('admin/pages/status');
 
-		$vars['messages'] = Notify::read();
-		$vars['pages'] = $pagination;
-		$vars['status'] = $status;
+        $pagination = new Paginator($pages, $total, $page, $perpage, $url);
 
-		return View::create('pages/index', $vars)
-			->partial('header', 'partials/header')
-			->partial('footer', 'partials/footer');
-	});
 
-	/*
-		Edit Page
-	*/
-	Route::get('admin/pages/edit/(:num)', function($id) {
-		$vars['messages'] = Notify::read();
-		$vars['token'] = Csrf::token();
-		$vars['page'] = Page::find($id);
-		$vars['pages'] = Page::dropdown(array('exclude' => array($id), 'show_empty_option' => true));
+        $vars['pages'] = $pagination;
+        $vars['status'] = $status;
 
-		$vars['statuses'] = array(
-			'published' => __('global.published'),
-			'draft' => __('global.draft'),
-			'archived' => __('global.archived')
-		);
+        return View::create('pages/index', $vars)
+            ->partial('header', 'partials/header')
+            ->partial('footer', 'partials/footer');
+    });
 
-		// extended fields
-		$vars['fields'] = Extend::fields('page', $id);
+    /*
+        Edit Page
+    */
+    Route::get('admin/pages/edit/(:num)', function ($id) {
 
-		return View::create('pages/edit', $vars)
-			->partial('header', 'partials/header')
-			->partial('footer', 'partials/footer')
-			->partial('editor', 'partials/editor');
-	});
+        $vars['token'] = Csrf::token();
+        $vars['deletable'] = (Page::count() > 1) && (Page::home()->id != $id) && (Page::posts()->id != $id) && (count(Page::find($id)->children()) == 0);
+        $vars['page'] = Page::find($id);
+        $vars['pages'] = Page::dropdown(array('exclude' => array($id), 'show_empty_option' => true));
 
-	Route::post('admin/pages/edit/(:num)', function($id) {
-		$input = Input::get(array('parent', 'name', 'title', 'slug', 'content', 'status', 'redirect', 'show_in_menu'));
+        $vars['pagetypes'] = Query::table(Base::table('pagetypes'))->sort('key')->get();
 
-		// if there is no slug try and create one from the title
-		if(empty($input['slug'])) {
-			$input['slug'] = $input['title'];
-		}
+        $vars['statuses'] = array(
+            'published' => __('global.published'),
+            'draft' => __('global.draft'),
+            'archived' => __('global.archived')
+        );
 
-		// convert to ascii
-		$input['slug'] = slug($input['slug']);
+        // extended fields
+        $vars['fields'] = Extend::fields('page', $id, $vars['page']->pagetype);
 
-		// encode title
-		$input['title'] = htmlspecialchars($input['title'], ENT_QUOTES, Config::app('encoding'), false);
+        return View::create('pages/edit', $vars)
+            ->partial('header', 'partials/header')
+            ->partial('footer', 'partials/footer')
+            ->partial('editor', 'partials/editor');
+    });
 
-		$validator = new Validator($input);
+    Route::post('admin/pages/edit/(:num)', function ($id) {
+        $input = Input::get(array('parent', 'name', 'title', 'slug', 'markdown', 'status', 'redirect', 'show_in_menu', 'pagetype'));
 
-		$validator->add('duplicate', function($str) use($id) {
-			return Page::where('slug', '=', $str)->where('id', '<>', $id)->count() == 0;
-		});
+        // if there is no slug try and create one from the title
+        if (empty($input['slug'])) {
+            $input['slug'] = $input['title'];
+        }
 
-		$validator->check('title')
-			->is_max(3, __('pages.title_missing'));
+        // convert to ascii
+        $input['slug'] = slug($input['slug']);
 
-		$validator->check('slug')
-			->is_max(3, __('pages.slug_missing'))
-			->is_duplicate(__('pages.slug_duplicate'))
-			->not_regex('#^[0-9_-]+$#', __('pages.slug_invalid'));
+        // an array of items that we shouldn't encode - they're no XSS threat
+        $dont_encode = array('markdown');
 
-		if($input['redirect']) {
-			$validator->check('redirect')
-				->is_url( __('pages.redirect_missing'));
-		}
+        foreach ($input as $key => &$value) {
+            if (in_array($key, $dont_encode)) {
+                continue;
+            }
+            $value = eq($value);
+        }
 
-		if($errors = $validator->errors()) {
-			Input::flash();
+        $validator = new Validator($input);
 
-			Notify::error($errors);
+        $validator->add('duplicate', function ($str) use ($id) {
+            return Page::where('slug', '=', $str)->where('id', '<>', $id)->count() == 0;
+        });
 
-			return Response::redirect('admin/pages/edit/' . $id);
-		}
+        $validator->check('title')
+            ->is_max(3, __('pages.title_missing'));
 
-		if(empty($input['name'])) {
-			$input['name'] = $input['title'];
-		}
+        $validator->check('slug')
+            ->is_max(3, __('pages.slug_missing'))
+            ->is_duplicate(__('pages.slug_duplicate'))
+            ->not_regex('#^[0-9_-]+$#', __('pages.slug_invalid'));
 
-		// encode title
-		$input['title'] = e($input['title'], ENT_COMPAT);
+        if ($input['redirect']) {
+            $validator->check('redirect')
+                ->is_url(__('pages.redirect_missing'));
+        }
 
-		$input['show_in_menu'] = is_null($input['show_in_menu']) ? 0 : 1;
+        if ($errors = $validator->errors()) {
+            Input::flash();
 
-		Page::update($id, $input);
+            // Notify::error($errors);
 
-		Extend::process('page', $id);
+            return Response::json(array(
+                'id'     => $id,
+                'errors' => array_flatten($errors, array())
+            ));
+        }
 
-		Notify::success(__('pages.updated'));
+        if (empty($input['name'])) {
+            $input['name'] = $input['title'];
+        }
 
-		return Response::redirect('admin/pages/edit/' . $id);
-	});
+        // encode title
+        $input['title'] = e($input['title'], ENT_COMPAT);
 
-	/*
-		Add Page
-	*/
-	Route::get('admin/pages/add', function() {
-		$vars['messages'] = Notify::read();
-		$vars['token'] = Csrf::token();
-		$vars['pages'] = Page::dropdown(array('exclude' => array(), 'show_empty_option' => true));
+        $input['show_in_menu'] = is_null($input['show_in_menu']) || empty($input['show_in_menu']) ? 0 : 1;
 
-		$vars['statuses'] = array(
-			'published' => __('global.published'),
-			'draft' => __('global.draft'),
-			'archived' => __('global.archived')
-		);
+        $input['html'] = parse($input['markdown']);
 
-		// extended fields
-		$vars['fields'] = Extend::fields('page');
+        Page::update($id, $input);
 
-		return View::create('pages/add', $vars)
-			->partial('header', 'partials/header')
-			->partial('footer', 'partials/footer')
-			->partial('editor', 'partials/editor');
-	});
+        Extend::process('page', $id);
 
-	Route::post('admin/pages/add', function() {
-		$input = Input::get(array('parent', 'name', 'title', 'slug', 'content',
-			'status', 'redirect', 'show_in_menu'));
+        // Notify::success(__('pages.updated'));
 
-		// if there is no slug try and create one from the title
-		if(empty($input['slug'])) {
-			$input['slug'] = $input['title'];
-		}
+        return Response::json(array(
+            'id'           => $id,
+            'notification' => __('pages.updated')
+        ));
+    });
 
-		// convert to ascii
-		$input['slug'] = slug($input['slug']);
+    /*
+        Add Page
+    */
+    Route::get('admin/pages/add', function () {
 
-		// encode title
-		$input['title'] = e($input['title'], ENT_COMPAT);
+        $vars['token'] = Csrf::token();
+        $vars['pages'] = Page::dropdown(array('exclude' => array(), 'show_empty_option' => true));
 
-		$validator = new Validator($input);
+        $vars['pagetypes'] = Query::table(Base::table('pagetypes'))->sort('key')->get();
 
-		$validator->add('duplicate', function($str) {
-			return Page::where('slug', '=', $str)->count() == 0;
-		});
+        $vars['statuses'] = array(
+            'published' => __('global.published'),
+            'draft' => __('global.draft'),
+            'archived' => __('global.archived')
+        );
 
-		$validator->check('title')
-			->is_max(3, __('pages.title_missing'));
+        // extended fields
+        $vars['fields'] = Extend::fields('page');
 
-		$validator->check('slug')
-			->is_max(3, __('pages.slug_missing'))
-			->is_duplicate(__('pages.slug_duplicate'))
-			->not_regex('#^[0-9_-]+$#', __('pages.slug_invalid'));
+        return View::create('pages/add', $vars)
+            ->partial('header', 'partials/header')
+            ->partial('footer', 'partials/footer')
+            ->partial('editor', 'partials/editor');
+    });
 
-		if($input['redirect']) {
-			$validator->check('redirect')
-				->is_url(__('pages.redirect_missing'));
-		}
+    Route::post('admin/pages/add', function () {
+        $input = Input::get(array('parent', 'name', 'title', 'slug', 'markdown', 'status', 'redirect', 'show_in_menu', 'pagetype'));
 
-		if($errors = $validator->errors()) {
-			Input::flash();
+        // if there is no slug try and create one from the title
+        if (empty($input['slug'])) {
+            $input['slug'] = $input['title'];
+        }
 
-			Notify::error($errors);
+        // convert to ascii
+        $input['slug'] = slug($input['slug']);
 
-			return Response::redirect('admin/pages/add');
-		}
+        // an array of items that we shouldn't encode - they're no XSS threat
+        $dont_encode = array('markdown');
 
-		if(empty($input['name'])) {
-			$input['name'] = $input['title'];
-		}
+        foreach ($input as $key => &$value) {
+            if (in_array($key, $dont_encode)) {
+                continue;
+            }
+            $value = eq($value);
+        }
 
-		$input['show_in_menu'] = is_null($input['show_in_menu']) ? 0 : 1;
+        $validator = new Validator($input);
 
-		$page = Page::create($input);
+        $validator->add('duplicate', function ($str) {
+            return Page::where('slug', '=', $str)->count() == 0;
+        });
 
-		Extend::process('page', $page->id);
+        $validator->check('title')
+            ->is_max(3, __('pages.title_missing'));
 
-		Notify::success(__('pages.created'));
+        $validator->check('slug')
+            ->is_max(3, __('pages.slug_missing'))
+            ->is_duplicate(__('pages.slug_duplicate'))
+            ->not_regex('#^[0-9_-]+$#', __('pages.slug_invalid'));
 
-		return Response::redirect('admin/pages');
-	});
+        if ($input['redirect']) {
+            $validator->check('redirect')
+                ->is_url(__('pages.redirect_missing'));
+        }
 
-	/*
-		Delete Page
-	*/
-	Route::get('admin/pages/delete/(:num)', function($id) {
-		Page::find($id)->delete();
+        if ($errors = $validator->errors()) {
+            Input::flash();
 
-		Query::table(Base::table('page_meta'))->where('page', '=', $id)->delete();
+            // Notify::error($errors);
 
-		Notify::success(__('pages.deleted'));
+            return Response::json(array(
+                'id'     => $page->id,
+                'errors' => array_flatten($errors, array())
+            ));
+        }
 
-		return Response::redirect('admin/pages');
-	});
+        if (empty($input['name'])) {
+            $input['name'] = $input['title'];
+        }
 
+        $input['show_in_menu'] = is_null($input['show_in_menu']) || empty($input['show_in_menu']) ? 0 : 1;
+
+        $input['html'] = parse($input['markdown']);
+
+        $page = Page::create($input);
+
+        $id = $page->id;
+
+        Extend::process('page', $id);
+
+        // Notify::success(__('pages.created'));
+
+        return Response::json(array(
+            'id'           => $id,
+            'notification' => __('pages.created'),
+            'redirect'     => Uri::to('admin/pages/edit/' . $id)
+        ));
+    });
+
+    /*
+        Delete Page
+    */
+    Route::get('admin/pages/delete/(:num)', function ($id) {
+        if ((Page::count() > 1) && (Page::home()->id != $id) && (Page::posts()->id != $id) && (count(Page::find($id)->children()) == 0)) {
+            Page::find($id)->delete();
+            Query::table(Base::table('page_meta'))->where('page', '=', $id)->delete();
+            Notify::success(__('pages.deleted'));
+        } else {
+            Notify::error('Unable to delete page. The target must not be a parent, home or posts page, or you must have at least 1 page.');
+        }
+
+        return Response::redirect('admin/pages');
+    });
 });

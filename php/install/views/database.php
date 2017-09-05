@@ -1,58 +1,56 @@
-<?php echo $header; 
-// Openshift code
-$op_host=getenv("OPENSHIFT_MYSQL_DB_HOST");
-$op_port=getenv("OPENSHIFT_MYSQL_DB_PORT");
-$op_uname=getenv("OPENSHIFT_MYSQL_DB_USERNAME");
-$op_pass=getenv("OPENSHIFT_MYSQL_DB_PASSWORD");
-$op_dbname=getenv("OPENSHIFT_APP_NAME");
-
-
-?>
+<?php echo $header; ?>
 
 <section class="content">
 	<article>
 		<h1>Your database details</h1>
 
-		<p>This page is preconfigured to suite your openshift catridge.</p>
+		<p>Firstly, we’ll need a database. Anchor needs them to store all of your blog’s information, so it’s vital you fill these in correctly. If you don’t know what these are, you’ll need to contact your webhost.</p>
+
+		<?php echo Notify::read(); ?>
 	</article>
 
 	<form method="post" action="<?php echo uri_to('database'); ?>" autocomplete="off">
-		<?php echo $messages; ?>
+
 
 		<fieldset>
 			<p>
 				<label for="host">Database Host</label>
-				<input id="host" name="host" value="<?php echo $op_host; ?>" readonly>
+				<input id="host" name="host" value="<?php echo Input::previous('host', '127.0.0.1'); ?>">
 
-				<i>Filled from openshift.</i>
+				<i>Most likely <b>localhost</b> or <b>127.0.0.1</b>.</i>
 			</p>
 
 			<p>
 				<label for="port">Port</label>
-				<input id="port" name="port" value="<?php echo $op_port; ?>" readonly>
+				<input id="port" name="port" value="<?php echo Input::previous('port', '3306'); ?>">
 
-				<i>Filled from openshift.</i>
+				<i>Usually <b>3306</b>.</i>
 			</p>
 
 			<p>
 				<label for="user">Username</label>
-				<input id="user" name="user" value="<?php echo $op_uname; ?>" readonly>
+				<input id="user" name="user" value="<?php echo Input::previous('user', 'root'); ?>">
 
-				<i>Filled from openshift.</i>
+				<i>The database user, usually <b>root</b>.</i>
 			</p>
 
 			<p>
 				<label for="pass">Password</label>
-				<input id="pass" name="pass" value="<?php echo $op_pass; ?>" readonly>
-
-				<i>Filled from openshift.</i>
+				<input id="pass" name="pass" type="password" value="<?php echo Input::previous('pass'); ?>" class="db-password-field">
+				<i>Leave blank for empty password.</i>
 			</p>
 
 			<p>
-				<label for="name">Database Name</label>
-				<input id="name" name="name" value="<?php echo $op_dbname; ?>" readonly>
+				<label for="show-hide">Show or hide password</label>
+				<input name="show-hide" type="checkbox" value="Show/Hide password" class="show-hide-password">
+				<i>Check the box to show the password.</i>
+			</p>
+			<br>
 
-				<i>Filled from openshift.</i>
+			<p>
+				<label for="name">Database Name</label>
+				<input id="name" name="name" value="<?php echo Input::previous('name', 'anchor'); ?>">
+				<i>Your database’s name.</i>
 			</p>
 
 			<p>
@@ -64,9 +62,9 @@ $op_dbname=getenv("OPENSHIFT_APP_NAME");
 
 			<p>
 				<label for="collation">Collation</label>
-				<select id="collation" name="collation">
-					<?php foreach($collations as $code => $collation): ?>
-					<?php $selected = ($code == Input::previous('collation', 'utf8_general_ci')) ? ' selected' : ''; ?>
+				<select id="collation" class="chosen-select" name="collation">
+					<?php foreach ($collations as $code => $collation): ?>
+					<?php $selected = ($code == Input::previous('collation', 'utf8_unicode_ci')) ? ' selected' : ''; ?>
 					<option value="<?php echo $code; ?>" <?php echo $selected; ?>>
 						<?php echo $code; ?>
 					</option>

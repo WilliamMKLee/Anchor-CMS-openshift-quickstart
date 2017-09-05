@@ -1,156 +1,175 @@
 <?php
 
-class Installer {
+class installer
+{
 
-	// database connection
-	public static $connection;
+    // database connection
+    public static $connection;
 
-	/*
-		Install
-	*/
+    /*
+        Install
+    */
 
-	public static function run() {
-		// session data
-		$settings = Session::get('install');
+    public static function run()
+    {
+        // session data
+        $settings = Session::get('install');
 
-		// create database connection
-		static::connect($settings);
+        // create database connection
+        static::connect($settings);
 
-		// install tables
-		static::schema($settings);
+        // check we have not already installed
+        if (!static::$connection->instance()->query('SHOW DATABASES LIKE ' . static::$connection->instance()->quote($settings['database']['name']) . ';')->fetchColumn()) {
+            // create the database
+            static::$connection->instance()->query('CREATE DATABASE ' . substr(static::$connection->instance()->quote($settings['database']['name']),1,-1) . ';');
+        }
+         
+        // use the database
+        static::$connection->instance()->query('USE ' . substr(static::$connection->instance()->quote($settings['database']['name']),1,-1) . ';');
 
-		// insert metadata
-		static::metadata($settings);
+        if (!static::$connection->instance()->query('SHOW TABLES;')->fetchColumn()) {
+            // install tables
+            static::schema($settings);
 
-		// create user account
-		static::account($settings);
+            // insert metadata
+            static::metadata($settings);
 
-		// write database config
-		static::database($settings);
+            // create user account
+            static::account($settings);
+        }
 
-		// write application config
-		static::application($settings);
+        // write database config
+        static::database($settings);
 
-		// write session config
-		static::session($settings);
+        // write application config
+        static::application($settings);
 
-		// install htaccess file
-		static::rewrite($settings);
-	}
+        // write session config
+        static::session($settings);
 
-	private static function connect($settings) {
-		$database = $settings['database'];
+        // install htaccess file
+        static::rewrite($settings);
+    }
 
-		$config = array(
-			'driver' => 'mysql',
-			'database' => $database['name'],
-			'hostname' => $database['host'],
-			'port' => $database['port'],
-			'username' => $database['user'],
-			'password' => $database['pass'],
-			'charset' => 'utf8'
-		);
+    private static function connect($settings)
+    {
+        $database = $settings['database'];
 
-		static::$connection = DB::factory($config);
-	}
+        // we do not specify the database name as it may not exist
+        $config = array(
+            'driver' => 'mysql',
+            'hostname' => $database['host'],
+            'port' => $database['port'],
+            'username' => $database['user'],
+            'password' => $database['pass'],
+            'charset' => 'utf8'
+        );
 
-	private static function schema($settings) {
-		$database = $settings['database'];
+        static::$connection = DB::factory($config);
+    }
 
-		$sql = Braces::compile(APP . 'storage/anchor.sql', array(
-			'now' => gmdate('Y-m-d H:i:s'),
-			'charset' => 'utf8',
-			'prefix' => $database['prefix']
-		));
+    private static function schema($settings)
+    {
+        $database = $settings['database'];
 
-		static::$connection->instance()->query($sql);
-	}
+        $sql = Braces::compile(APP . 'storage/anchor.sql', array(
+            'now' => gmdate('Y-m-d H:i:s'),
+            'charset' => 'utf8',
+            'prefix' => $database['prefix']
+        ));
 
-	private static function metadata($settings) {
-		$metadata = $settings['metadata'];
-		$database = $settings['database'];
+        static::$connection->instance()->query($sql);
+    }
 
-		$config = array(
-			'sitename' => $metadata['site_name'],
-			'description' => $metadata['site_description'],
-			'theme' => $metadata['theme']
-		);
+    private static function metadata($settings)
+    {
+        $metadata = $settings['metadata'];
+        $database = $settings['database'];
 
-		$query = Query::table($database['prefix'] . 'meta', static::$connection);
+        $config = array(
+            'sitename' => $metadata['site_name'],
+            'description' => $metadata['site_description'],
+            'theme' => $metadata['theme']
+        );
 
-		foreach($config as $key => $value) {
-			$query->insert(array('key' => $key, 'value' => $value));
-		}
-	}
+        $query = Query::table($database['prefix'] . 'meta', static::$connection);
 
-	private static function account($settings) {
-		$account = $settings['account'];
-		$database = $settings['database'];
+        foreach ($config as $key => $value) {
+            $query->insert(array('key' => $key, 'value' => $value));
+        }
+    }
 
-		$query = Query::table($database['prefix'] . 'users', static::$connection);
+    private static function account($settings)
+    {
+        $account = $settings['account'];
+        $database = $settings['database'];
 
-		$query->insert(array(
-			'username' => $account['username'],
-			'password' => Hash::make($account['password']),
-			'email' => $account['email'],
-			'real_name' => 'Administrator',
-			'bio' => 'The bouse',
-			'status' => 'active',
-			'role' => 'administrator'
-		));
-	}
+        $query = Query::table($database['prefix'] . 'users', static::$connection);
 
-	private static function database($settings) {
-		$database = $settings['database'];
+        $query->insert(array(
+            'username' => $account['username'],
+            'password' => Hash::make($account['password']),
+            'email' => $account['email'],
+            'real_name' => 'Administrator',
+            'bio' => 'The bouse',
+            'status' => 'active',
+            'role' => 'administrator'
+        ));
+    }
 
-		$distro = Braces::compile(APP . 'storage/database.distro.php', array(
-			'hostname' => $database['host'],
-			'port' => $database['port'],
-			'username' => $database['user'],
-			'password' => $database['pass'],
-			'database' => $database['name'],
-			'prefix' => $database['prefix']
-		));
+    private static function database($settings)
+    {
+        $database = $settings['database'];
 
-		file_put_contents(PATH . 'anchor/config/db.php', $distro);
-	}
+        $distro = Braces::compile(APP . 'storage/database.distro.php', array(
+            'hostname' => $database['host'],
+            'port' => $database['port'],
+            'username' => $database['user'],
+            'password' => $database['pass'],
+            'database' => $database['name'],
+            'prefix' => $database['prefix']
+        ));
 
-	private static function application($settings) {
-		$distro = Braces::compile(APP . 'storage/application.distro.php', array(
-			'url' => $settings['metadata']['site_path'],
-			'index' => (mod_rewrite() ? '' : 'index.php'),
-			'key' => noise(),
-			'language' => $settings['i18n']['language'],
-			'timezone' => $settings['i18n']['timezone']
-		));
+        file_put_contents(PATH . 'anchor/config/db.php', $distro);
+    }
 
-		file_put_contents(PATH . 'anchor/config/app.php', $distro);
-	}
+    private static function application($settings)
+    {
+        $distro = Braces::compile(APP . 'storage/application.distro.php', array(
+            'url' => addslashes($settings['metadata']['site_path']),
+            'index' => (mod_rewrite() ? '' : 'index.php'),
+            'key' => noise(),
+            'language' => $settings['i18n']['language'],
+            'timezone' => $settings['i18n']['timezone']
+        ));
 
-	private static function session($settings) {
-		$database = $settings['database'];
+        file_put_contents(PATH . 'anchor/config/app.php', $distro);
+    }
 
-		$distro = Braces::compile(APP . 'storage/session.distro.php', array(
-			'table' => $database['prefix'] . 'sessions'
-		));
+    private static function session($settings)
+    {
+        $database = $settings['database'];
 
-		file_put_contents(PATH . 'anchor/config/session.php', $distro);
-	}
+        $distro = Braces::compile(APP . 'storage/session.distro.php', array(
+            'table' => $database['prefix'] . 'sessions'
+        ));
 
-	private static function rewrite($settings) {
-		if(mod_rewrite() or (is_apache() and $settings['metadata']['rewrite'])) {
-			$htaccess = Braces::compile(APP . 'storage/htaccess.distro', array(
-				'base' => $settings['metadata']['site_path'],
-				'index' => (is_cgi() ? 'index.php?/$1' : 'index.php/$1')
-			));
+        file_put_contents(PATH . 'anchor/config/session.php', $distro);
+    }
 
-			if(isset($htaccess) and is_writable($filepath = PATH . '.htaccess')) {
-				file_put_contents($filepath, $htaccess);
-			}
-			else {
-				Session::put('htaccess', $htaccess);
-			}
-		}
-	}
+    private static function rewrite($settings)
+    {
+        if (mod_rewrite() or (is_apache() and $settings['metadata']['rewrite'])) {
+            $htaccess = Braces::compile(APP . 'storage/htaccess.distro', array(
+                'base' => $settings['metadata']['site_path'],
+                'index' => 'index.php?/$1'
+            ));
 
+            if (isset($htaccess) and is_writable($filepath = PATH)) {
+                file_put_contents($filepath . '.htaccess', $htaccess);
+            } else {
+                Session::put('htaccess', $htaccess);
+            }
+        }
+    }
 }

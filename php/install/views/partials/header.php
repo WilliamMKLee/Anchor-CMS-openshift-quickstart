@@ -6,17 +6,20 @@
 		<meta name="robots" content="noindex, nofollow">
 
 		<link rel="stylesheet" href="<?php echo asset('views/assets/css/install.css'); ?>">
+		<link rel="stylesheet" href="<?php echo asset('views/assets/css/chosen.css'); ?>">
 	</head>
 	<body>
 
-    	<nav>
+		<nav>
 			<img src="<?php echo asset('views/assets/img/logo.png'); ?>">
 
 			<ul>
-				<li class="start database metadata account complete">Language and timezone</li>
-				<li class="database metadata account complete">Database setup</li>
-				<li class="metadata account complete">Site metadata</li>
-				<li class="account complete">Your account</li>
+				<?php if (!isset($installed)) : ?>
+					<li class="start database metadata account complete">Language and timezone</li>
+					<li class="database metadata account complete">Database setup</li>
+					<li class="metadata account complete">Site metadata</li>
+					<li class="account complete">Your account</li>
+				<?php endif; ?>
 				<li class="complete">All done!</li>
 			</ul>
 		</nav>
