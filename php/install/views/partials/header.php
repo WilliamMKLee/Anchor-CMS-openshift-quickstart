@@ -14,12 +14,10 @@
 			<img src="<?php echo asset('views/assets/img/logo.png'); ?>">
 
 			<ul>
-				<?php if (!isset($installed)) : ?>
-					<li class="start database metadata account complete">Language and timezone</li>
-					<li class="database metadata account complete">Database setup</li>
-					<li class="metadata account complete">Site metadata</li>
-					<li class="account complete">Your account</li>
-				<?php endif; ?>
+				<li class="start database metadata account complete">Language and timezone</li>
+				<li class="database metadata account complete">Database setup</li>
+				<li class="metadata account complete">Site metadata</li>
+				<li class="account complete">Your account</li>
 				<li class="complete">All done!</li>
 			</ul>
 		</nav>
